@@ -23,5 +23,6 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-    {ok, { {one_for_one, 5, 10}, []} }.
+    Child = [{tcp_server_accept, {tcp_server_accept, start_link, []}, permanent, brutal_kill, worker, [tcp_server_accept]}],
+    {ok, { {one_for_one, 5, 10}, Child} }.
 
