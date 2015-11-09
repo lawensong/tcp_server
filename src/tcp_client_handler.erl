@@ -4,15 +4,15 @@
 %%% @doc
 %%%
 %%% @end
-%%% Created : 08. 十一月 2015 16:14
+%%% Created : 09. 2015 18:23
 %%%-------------------------------------------------------------------
--module(tcp_server_accept).
+-module(tcp_client_handler).
 -author("Administrator").
 
 -behaviour(gen_server).
 
 %% API
--export([start_link/0]).
+-export([start_link/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -23,9 +23,9 @@
   code_change/3]).
 
 -define(SERVER, ?MODULE).
--define(DEFAULT_PORT, 8080).
+-define(TIMEOUT, 120000).
 
--record(state, {lsock, acceptor, module}).
+-record(state, {socket, addr}).
 
 %%%===================================================================
 %%% API
@@ -37,10 +37,10 @@
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec(start_link() ->
+-spec(start_link(Args :: term()) ->
   {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
-start_link() ->
-  gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+start_link(Socket) ->
+  gen_server:start_link({local, ?SERVER}, ?MODULE, [Socket], []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -60,15 +60,10 @@ start_link() ->
 -spec(init(Args :: term()) ->
   {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
-init([]) ->
-  Opts = [binary, {packet, 2}, {reuseaddr, true}, {keepalive, true}, {backlog, 30}, {active, false}],
-%%   {ok, LSock} = gen_tcp:listen(?DEFAULT_PORT, Opts),
-  case gen_tcp:listen(?DEFAULT_PORT, Opts) of
-    {ok, LSock} ->
-      {ok, Ref} = prim_inet:async_accept(LSock, -1),
-      {ok, #state{lsock = LSock, acceptor = Ref}, 0};
-    {error, Reason} -> {stop, Reason}
-  end.
+init([Socket]) ->
+  inet:setopts(Socket, [{active, once}, {packet, 2}, binary]),
+  {ok, {Ip, _Port}} = inet:peername(Socket),
+  {ok, #state{socket = Socket, addr = Ip}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -116,23 +111,14 @@ handle_cast(_Request, State) ->
   {noreply, NewState :: #state{}} |
   {noreply, NewState :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #state{}}).
-handle_info({inet_async, LSock, Ref, {ok, CliSocket}}, #state{lsock = LSock, acceptor = Ref} = State) ->
-  try
-    case set_sockopt(LSock, CliSocket) of
-      ok -> ok;
-      {error, Reason} -> exit({set_sockopt, Reason})
-    end,
-    {ok, Pid} = tcp_server_sup:start_child(CliSocket),
-      gen_tcp:controlling_process(CliSocket, Pid),
-      case prim_inet:async_accept(LSock, -1) of
-        {ok, NewRef} -> ok, {noreply, State#state{acceptor = NewRef}};
-        {error, NewRef} -> exit({async_accept, inet:format_error(NewRef)})
-      end
-  catch
-      exit:Why  ->
-        error_logger:error_msg("Error meg in async ~p\n", [Why]),
-        {stop, Why, State}
-  end;
+handle_info({tcp, Socket, Data}, State) ->
+  inet:setopts(Socket, [{active, once}]),
+  io:format("~p receive message ~p\n", [self(), Data]),
+  ok = gen_tcp:send(Socket, <<"Echo back : ", Data/binary>>),
+  {noreply, State};
+
+handle_info({tcp_closed, _Socket}, State) ->
+  {stop, normal, State};
 
 handle_info(_Info, State) ->
   {noreply, State}.
@@ -170,14 +156,3 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
-set_sockopt(ListSock, CliSock) ->
-  true = inet_db:register_socket(CliSock, inet_tcp),
-  case prim_inet:getopts(ListSock, [active, nodelay, keepalive, delay_send, priority, tos]) of
-    {ok, Opts} ->
-      case prim_inet:setopts(CliSock, Opts) of
-        ok -> ok;
-        Error -> gen_tcp:close(CliSock), Error
-      end;
-    Error -> gen_tcp:close(CliSock), Error
-  end.
