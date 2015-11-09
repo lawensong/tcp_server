@@ -17,10 +17,16 @@
 %% ===================================================================
 
 start_child(Socket) ->
-    supervisor:start_child(?CLIENT_SUP, [Socket]).
+  ChildSpec = {{tcp_client_handler}, {tcp_client_handler, start_link, [Socket]},
+    transient, infinity, worker, [esockd_listener_sup]},
+    supervisor:start_child(?CLIENT_SUP, [ChildSpec]).
 
 start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+  {ok, Sup} = supervisor:start_link({local, ?MODULE}, ?MODULE, []),
+  supervisor:start_child(Sup,
+    {?CLIENT_SUP,
+      {?CLIENT_SUP, start_link, []},
+      permanent, infinity, supervisor, [?CLIENT_SUP]}).
 
 %% ===================================================================
 %% Supervisor callbacks
