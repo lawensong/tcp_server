@@ -4,9 +4,9 @@
 %%% @doc
 %%%
 %%% @end
-%%% Created : 09. 2015 18:23
+%%% Created : 10. 2015 12:50
 %%%-------------------------------------------------------------------
--module(tcp_client_handler).
+-module(tcp_server_conn).
 -author("Administrator").
 
 -behaviour(gen_server).
@@ -23,7 +23,6 @@
   code_change/3]).
 
 -define(SERVER, ?MODULE).
--define(TIMEOUT, 120000).
 
 -record(state, {socket, addr}).
 
@@ -37,8 +36,8 @@
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec(start_link(Args :: term()) ->
-  {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
+%% -spec(start_link(Socket) ->
+%%   {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
 start_link(Socket) ->
   gen_server:start_link({local, ?SERVER}, ?MODULE, [Socket], []).
 
@@ -61,6 +60,7 @@ start_link(Socket) ->
   {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
 init([Socket]) ->
+  {io:format("new socket--->")},
   inet:setopts(Socket, [{active, once}, {packet, 2}, binary]),
   {ok, {Ip, _Port}} = inet:peername(Socket),
   {ok, #state{socket = Socket, addr = Ip}}.
@@ -112,8 +112,8 @@ handle_cast(_Request, State) ->
   {noreply, NewState :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #state{}}).
 handle_info({tcp, Socket, Data}, State) ->
-  inet:setopts(Socket, [{active, once}]),
   io:format("~p receive message ~p\n", [self(), Data]),
+  inet:setopts(Socket, [{active, once}]),
   ok = gen_tcp:send(Socket, <<"Echo back : ", Data/binary>>),
   {noreply, State};
 

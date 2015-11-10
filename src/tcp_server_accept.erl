@@ -25,7 +25,7 @@
 -define(SERVER, ?MODULE).
 -define(DEFAULT_PORT, 8080).
 
--record(state, {lsock, acceptor, module}).
+-record(state, {lsock, acceptor}).
 
 %%%===================================================================
 %%% API
